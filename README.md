@@ -8,7 +8,7 @@ The project is also part of my Python automation portfolio, with an emphasis on 
 
 ## Demo
 
-
+https://github.com/user-attachments/assets/6166138f-9143-4691-b31e-4185ca2c8447
 
 ## Features
 
