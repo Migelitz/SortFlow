@@ -1,12 +1,14 @@
 from sortflow.organizer import get_unique_destination
 from sortflow import organizer
 
+
 def test_get_unique_destination(tmp_path):
     destination = tmp_path / "report.txt"
 
     result = get_unique_destination(destination)
 
     assert result == destination
+
 
 def test_get_unique_destination_when_file_exists(tmp_path):
     destination = tmp_path / "report.txt"
@@ -17,6 +19,7 @@ def test_get_unique_destination_when_file_exists(tmp_path):
 
     assert result == tmp_path / "report_1.txt"
 
+
 def test_get_unique_destination_multiple_duplicates(tmp_path):
     destination = tmp_path / "report.txt"
 
@@ -26,6 +29,7 @@ def test_get_unique_destination_multiple_duplicates(tmp_path):
     result = get_unique_destination(destination)
 
     assert result == tmp_path / "report_2.txt"
+
 
 def test_organize_file(tmp_path, monkeypatch):
     fake_downloads = tmp_path / "Downloads"
@@ -45,12 +49,7 @@ def test_organize_file(tmp_path, monkeypatch):
 
     organizer.organize_file(file)
 
-    expected_destination = (
-        fake_documents
-        / "[AUTOMATED]-moved-files"
-        / "txt"
-        / "report.txt"
-    )
+    expected_destination = fake_documents / "[AUTOMATED]-moved-files" / "txt" / "report.txt"
 
     assert expected_destination.exists()
     assert expected_destination.read_text() == "Hello"

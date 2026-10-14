@@ -25,6 +25,7 @@ def test_is_not_in_downloads(monkeypatch, tmp_path):
 
     assert watcher.is_in_downloads(outside_file) is False
 
+
 def test_nested_path_is_in_downloads(monkeypatch, tmp_path):
     fake_downloads = tmp_path / "Downloads"
     fake_downloads.mkdir()
@@ -34,6 +35,7 @@ def test_nested_path_is_in_downloads(monkeypatch, tmp_path):
     nested_file = fake_downloads / "some_folder" / "report.pdf"
 
     assert watcher.is_in_downloads(nested_file)
+
 
 def test_wait_for_file_when_stable(tmp_path):
     file = tmp_path / "report.txt"
@@ -46,6 +48,7 @@ def test_wait_for_file_when_stable(tmp_path):
     )
 
     assert result is True
+
 
 def test_wait_for_file_when_file_disappears(tmp_path):
     file = tmp_path / "report.txt"
