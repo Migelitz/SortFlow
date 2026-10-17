@@ -1,5 +1,5 @@
-from sortflow.organizer import get_unique_destination
 from sortflow import organizer
+from sortflow.organizer import get_unique_destination
 
 
 def test_get_unique_destination(tmp_path):
@@ -45,6 +45,16 @@ def test_organize_file(tmp_path, monkeypatch):
         organizer.CATEGORY_DIRS,
         "Documents",
         fake_documents,
+    )
+    monkeypatch.setattr(
+        organizer,
+        "record_file_operation",
+        lambda **kwargs: None
+    )
+    monkeypatch.setattr(
+        organizer, 
+        "record_classification_feedback", 
+        lambda **kwargs: None
     )
 
     organizer.organize_file(file)
