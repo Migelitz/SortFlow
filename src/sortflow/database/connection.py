@@ -6,6 +6,7 @@ from pathlib import Path
 DATABASE_DIR = Path.home() / ".local" / "share" / "sortflow"
 DATABASE_PATH = DATABASE_DIR / "database.db"
 
+
 @contextmanager
 def database_connection() -> Generator[sqlite3.Connection, None, None]:
     DATABASE_DIR.mkdir(parents=True, exist_ok=True)

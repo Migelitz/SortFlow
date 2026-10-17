@@ -22,12 +22,14 @@ CATEGORY_DIRS = {
 # ID for logs on who's log is this coming from
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class FileMetadata:
     name: str = ""
     extension: str = ""
     size: int = 0
     modified_at: str = ""
+
 
 def get_destination(path: Path) -> Path | None:
     file_type = classify_file(path)

@@ -57,9 +57,7 @@ def test_initialize_database_creates_all_tables_and_is_idempotent(initialized_da
     with connection.database_connection() as conn:
         tables = {
             row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
 
     assert {"file_operations", "classification_feedback"} <= tables
@@ -91,7 +89,6 @@ def test_record_file_operation_persists_operation(initialized_database):
         "created_at": row["created_at"],
     }
     assert row["created_at"]
-
 
 
 def test_record_classification_feedback_persists_prediction_and_correction(initialized_database):
@@ -159,9 +156,7 @@ def test_organize_file_records_rule_based_prediction(initialized_database, tmp_p
     organizer.organize_file(source)
 
     with connection.database_connection() as conn:
-        operation = conn.execute(
-            "SELECT status FROM file_operations"
-        ).fetchone()
+        operation = conn.execute("SELECT status FROM file_operations").fetchone()
         feedback = conn.execute(
             """
             SELECT filename, predicted_category, corrected_category, file_size_bytes

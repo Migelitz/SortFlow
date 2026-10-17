@@ -46,16 +46,8 @@ def test_organize_file(tmp_path, monkeypatch):
         "Documents",
         fake_documents,
     )
-    monkeypatch.setattr(
-        organizer,
-        "record_file_operation",
-        lambda **kwargs: None
-    )
-    monkeypatch.setattr(
-        organizer, 
-        "record_classification_feedback", 
-        lambda **kwargs: None
-    )
+    monkeypatch.setattr(organizer, "record_file_operation", lambda **kwargs: None)
+    monkeypatch.setattr(organizer, "record_classification_feedback", lambda **kwargs: None)
 
     organizer.organize_file(file)
 
