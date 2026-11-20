@@ -6,7 +6,37 @@ I originally built this project to solve a messy Downloads folder using simple f
 
 ## Demo
 
->- To follow-up for new demo for V2.0.0
+https://github.com/user-attachments/assets/3a89d40c-a57c-4bc9-85db-0f0af488a6d7
+
+### See SortFlow in Action
+
+A quick demonstration of SortFlow's content-aware file organization.
+
+The video shows SortFlow processing different file formats and automatically routing them to the appropriate folders based on their **filename, file extension, and extracted content** — rather than relying solely on file extensions.
+
+It also demonstrates OCR-based classification for image files and confidence-based fallback for files that lack sufficient classification signals.
+
+**Demo files and expected results:**
+
+| Demo File | Format | Expected Destination |
+|---|---|---|
+| `Q4_Operations_Update.pptx` | PowerPoint | `Work/` |
+| `Family-Plan.png` | PNG Image | `Personal/` |
+| `Enrollment_Requirements.jpg` | JPG Image | `School/` |
+| `Monthly Financial Statement.pdf` | PDF | `Personal/` |
+| `Software Development Project Proposal.docx` | Word Document | `Work/` |
+| `cs_lecture_notes.txt` | Text File | `School/` |
+| `server_cleanup_utility_script.py` | Python Source Code | `Uncategorized/` |
+
+**Demo highlights:**
+- Multi-format file classification
+- Content-aware heuristic scoring
+- OCR-based classification for images
+- Automatic file organization
+- Confidence-based `Uncategorized` fallback
+- Automated processing from the Downloads folder
+
+The demo illustrates how SortFlow handles different file formats, recognizes contextual signals, and avoids forcing uncertain files into an unrelated category.
 
 ## Features
 
