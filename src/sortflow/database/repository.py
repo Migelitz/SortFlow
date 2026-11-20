@@ -39,6 +39,8 @@ def record_classification_feedback(
     file_size_bytes: int,
     file_modified_at: str,
     predicted_category: str | None = None,
+    confidence_score: int = 0,
+    matched_signals: str = "",
     corrected_category: str | None = None,
 ) -> None:
     with database_connection() as conn:
@@ -50,9 +52,11 @@ def record_classification_feedback(
                 file_size_bytes,
                 file_modified_at,
                 predicted_category,
+                confidence_score,
+                matched_signals,
                 corrected_category,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 filename,
@@ -60,6 +64,8 @@ def record_classification_feedback(
                 file_size_bytes,
                 file_modified_at,
                 predicted_category,
+                confidence_score,
+                matched_signals,
                 corrected_category,
                 datetime.now(UTC).isoformat(),
             ),

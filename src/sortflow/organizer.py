@@ -1,23 +1,11 @@
 import logging
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
 from sortflow.classifier import classify_file
-from sortflow.config import (
-    DOCUMENTS_DIR,
-    MUSIC_DIR,
-    PICTURE_DIR,
-    VIDEO_DIR,
-)
 from sortflow.database.repository import record_classification_feedback, record_file_operation
-
-CATEGORY_DIRS = {
-    "Documents": DOCUMENTS_DIR,
-    "Music": MUSIC_DIR,
-    "Pictures": PICTURE_DIR,
-    "Videos": VIDEO_DIR,
-}
 
 # ID for logs on who's log is this coming from
 logger = logging.getLogger(__name__)
@@ -31,28 +19,19 @@ class FileMetadata:
     modified_at: str = ""
 
 
-def get_destination(path: Path) -> Path | None:
-    file_type = classify_file(path)
-
-    if file_type is None:
-        return None
-
-    category, extension = file_type
-
-    base_dir = CATEGORY_DIRS[category]
-    logger.info("File classified as %s; destination category: %s", extension, category)
-
-    return base_dir / "[AUTOMATED]-moved-files" / extension / path.name
-
-
 def create_destination_directory(destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.mkdir(parents=True, exist_ok=True)
 
 
 def get_unique_destination(destination: Path) -> Path:
+    """
+    Generate a unique destination path to prevent overwriting existing files.
+
+    If the destination already exists, append an incrementing numeric suffix to the filename (e.g., file_1.pdf, file_2.pdf) until an unused path is found.
+    """
+
     filename = destination.stem
     suffix = destination.suffix
-
     target_path = destination
     counter = 1
 
@@ -65,62 +44,103 @@ def get_unique_destination(destination: Path) -> Path:
         )
         counter += 1
 
+    if target_path != destination:
+        logger.info("Collision resolved: renamed to %s", target_path.name)
+
     return target_path
 
 
 def organize_file(path: Path) -> None:
     """Organize a file from the Downloads directory."""
-    file_type = classify_file(path)
-    destination = get_destination(path)
-
-    if destination is None or file_type is None:
-        logger.info("Unsupported file extension; skipping: %s", path.name)
+    try:
+        # Do not follow links into arbitrary locations, move directories, or
+        # create telemetry for empty placeholders produced by download tools.
+        if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
+            logger.info("Skipping symlink, non-file, or empty path: %s", path)
+            return
+    except OSError as error:
+        logger.warning("Cannot inspect path %s: %s", path, error)
         return
 
-    category, _ = file_type
-    create_destination_directory(destination)
+    logger.info("Processing: %s", path.name)
 
-    destination = get_unique_destination(destination)
+    # 1. Classify
+    try:
+        result = classify_file(path)
+    except Exception as error:
+        logger.exception("Classification crashed for %s: %s", path.name, error)
+        return
 
-    file_stat = path.stat()
+    # Log reasoning
+    for reason in result.reasoning:
+        logger.debug("Score Reason: %s", reason)
 
-    file = FileMetadata(
-        name=path.name,
-        extension=path.suffix,
-        size=file_stat.st_size,
-        modified_at=str(file_stat.st_mtime),
-    )
+    logger.info("Classification: %s (score=%d)", result.category_name, result.confidence)
+
+    # 2. Build Destination (Preserving original subfolder structure)
+    extension_folder = path.suffix.lower().lstrip(".") or "unknown"
+    final_dest_dir = result.destination_base / "[AUTOMATED]-moved-files" / extension_folder
 
     try:
-        path.rename(destination)
-        logger.info("File moved successfully: %s", destination)
+        create_destination_directory(final_dest_dir)
     except OSError as error:
-        logger.error("Failed to move %s to %s: %s", path, destination, error)
-        record_file_operation(
-            source_path=str(path),
-            destination_path=str(destination),
-            operation="move",
-            status="failed",
-            error_message=str(error),
-        )
-        logger.debug("Recorded file operation for %s", path.name)
+        logger.exception("Failed to create directory %s: %s", final_dest_dir, error)
         return
 
-    record_file_operation(
-        source_path=str(path),
-        destination_path=str(destination),
-        operation="move",
-        status="success",
-    )
-    logger.debug("Recorded file operation for %s", path.name)
+    destination = get_unique_destination(final_dest_dir / path.name)
+    logger.info("Destination: %s", destination)
+
+    # 3. Metadata & Move
+    try:
+        file_stat = path.stat()
+        file_meta = FileMetadata(
+            name=path.name,
+            extension=path.suffix,
+            size=file_stat.st_size,
+            modified_at=str(file_stat.st_mtime),
+        )
+
+        # link() fails with FileExistsError instead of replacing a destination,
+        # unlike rename(). This makes the final collision decision atomic.
+        # unlink() completes the move, and requires both paths to share a
+        # filesystem; an OSError is logged if that assumption is not true.
+        while True:
+            try:
+                os.link(path, destination)
+                break
+            except FileExistsError:
+                # Another process may have claimed the candidate after
+                # get_unique_destination() checked it, so choose another name.
+                destination = get_unique_destination(final_dest_dir / path.name)
+
+        path.unlink()
+        logger.info("Moved successfully.")
+    except PermissionError:
+        logger.error("Permission denied moving %s to %s", path.name, destination)
+        return
+    except FileNotFoundError:
+        logger.error("File %s disappeared before it could be moved.", path.name)
+        return
+    except OSError as error:
+        logger.exception("OS Error moving %s to %s: %s", path, destination, error)
+        record_file_operation(str(path), str(destination), "move", "failed", str(error))
+        return
+
+    # 4. Database Logging
+    record_file_operation(str(path), str(destination), "move", "success")
+
+    # Combine the reasoning list into a single string for the database
+    signals_str = " | ".join(result.reasoning)
 
     try:
         record_classification_feedback(
-            filename=file.name,
-            file_extension=file.extension,
-            file_size_bytes=file.size,
-            file_modified_at=file.modified_at,
-            predicted_category=category,
+            filename=file_meta.name,
+            file_extension=file_meta.extension,
+            file_size_bytes=file_meta.size,
+            file_modified_at=file_meta.modified_at,
+            predicted_category=result.category_name,
+            confidence_score=result.confidence,
+            matched_signals=signals_str,
         )
         logger.debug("Recorded classification feedback for %s", path.name)
     except sqlite3.Error as error:

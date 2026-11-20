@@ -1,6 +1,6 @@
 [project]
 name = "sortflow"
-version = "1.0.0"
+version = "2.0.0"
 description = "Just make it convenient and organize it!"
 readme = "README.md"
 authors = [
@@ -8,6 +8,9 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "pymupdf>=2.1",
+    "python-docx>=1.2.0",
+    "python-pptx>=1.0.2",
     "watchdog>=6.0.0",
 ]
 

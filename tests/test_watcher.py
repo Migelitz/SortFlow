@@ -60,3 +60,10 @@ def test_wait_for_file_when_file_disappears(tmp_path):
     )
 
     assert result is False
+
+
+def test_is_ignored_file(tmp_path):
+    assert watcher.is_ignored_file(tmp_path / ".org.chromium.Chromium.EX12X0") is True
+    assert watcher.is_ignored_file(tmp_path / "Unconfirmed.crdownload") is True
+    assert watcher.is_ignored_file(tmp_path / "download.part") is True
+    assert watcher.is_ignored_file(tmp_path / "report.pdf") is False

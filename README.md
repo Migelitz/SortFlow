@@ -1,172 +1,101 @@
 # SortFlow
 
-A lightweight Python automation tool that automatically organizes files added to my `~/Downloads` directory.
+A lightweight, content-aware Python automation tool that automatically organizes files added to my `~/Downloads` directory.
 
-I built this project because my Downloads folder was becoming difficult to manage. Instead of manually moving files into their expected folders, the organizer watches Downloads in the background and automatically sorts supported files into categorized directories.
-
-The project is also part of my Python automation portfolio, with an emphasis on filesystem automation, event-driven programming, testing, logging, and Linux service integration.
+I originally built this project to solve a messy Downloads folder using simple file extensions. In V2, SortFlow has evolved into a deterministic, heuristic-based classification engine. Instead of blindly sorting by extension, it inspects filenames, extensions, and safely extracts supported file contents (including Lazy OCR for images) to intelligently route files into contextual categories like `School`, `Work`, or `Personal`.
 
 ## Demo
 
-https://github.com/user-attachments/assets/6166138f-9143-4691-b31e-4185ca2c8447
+>- To follow-up for new demo for V2.0.0
 
 ## Features
 
-* Automatically monitors `~/Downloads`
-* Detects newly created or moved files using Watchdog
-* Processes files in a background worker thread
-* Waits for files to become stable before moving them
-* Classifies files by extension
-* Moves supported files instead of copying them
-* Preserves the original filename
-* Automatically handles duplicate filenames
-* Ignores unsupported file extensions
-* Does not recursively monitor Downloads subdirectories
-* Avoids processing files that have moved outside Downloads
-* Uses Python's `logging` module for application logging
-* Uses rotating log files to prevent unlimited log growth
-* Runs headlessly as a `systemd --user` service
-* Starts automatically with the user's Linux session
-
-## Supported File Types
-
-The current V1 implementation supports:
-
-| Category  | Extensions                                        |
-| --------- | ------------------------------------------------- |
-| Documents | `.pdf`, `.docx`, `.csv`, `.xlsx`, `.txt`, `.pptx` |
-| Pictures  | `.png`, `.jpg`, `.jpeg`                           |
-| Music     | `.mp3`                                            |
-| Videos    | `.mp4`                                            |
-
-Unsupported extensions are ignored and remain in `~/Downloads`.
-
-The supported extension list can be expanded as needed.
+- **Content-Aware Classification**: Uses a weighted scoring system based on filename keywords, file extensions, and document text.
+- **Safe Content Extraction**: Plain-text extraction is capped at 50 KB. PDF/image processing is limited to three pages. Massive files exceeding 100MB are safely bypassed to protect memory.
+- **Lazy OCR Integration**: PyMuPDF handles `.pdf`, `.jpg`, `.jpeg`, and `.png` files. If a scanned document lacks a text layer, it dynamically falls back to local Tesseract OCR.
+- **Lazy Module Loading**: Heavy document-parsing libraries (`pymupdf`, `docx`, `pptx`) are imported only when their specific file types are detected, keeping idle RAM usage near zero.
+- **SQLite Telemetry**: Logs classification decisions, confidence scores, and matched keywords to a local database for continuous heuristic tuning.
+- **Deterministic & Safe**: If a file fails to meet the minimum confidence threshold, it safely routes to an `Uncategorized/` folder rather than guessing.
+- **Collision Handling**: Automatically renames duplicate files (e.g., `report_1.pdf`) using an atomic `os.link` no-overwrite move, preventing data from being overwritten.
+- **Headless Linux Daemon**: Runs in the background as a `systemd --user` service.
 
 ## How It Organizes Files
 
-Files are placed into an `[AUTOMATED]-moved-files` directory under the appropriate category.
+Classification is driven by a declarative configuration file (`config.py`). SortFlow reads the file's text and filename, cleans the punctuation, and applies regex word-boundary matching to tally a score.
 
-For example:
+For example, a downloaded file named `CS101_Assignment.pdf`:
+1. Extension `.pdf` matches School (+1)
+2. Filename contains `assignment` (+5)
+3. Content contains `course` (+4)
+**Total Score: 10** → Routed to `~/Documents/School`
 
-```text
-~/Downloads/report.pdf
-        ↓
-~/Documents/[AUTOMATED]-moved-files/pdf/report.pdf
-```
+### Classifier Vocabulary
 
-A picture:
+The keyword vocabulary is maintained in `src/sortflow/config.py` as one flat,
+deterministic dictionary per category. Multi-word phrases such as `data
+structure`, `job offer`, and `national id` are supported because the
+classifier normalizes punctuation before applying escaped word-boundary
+matching.
 
-```text
-~/Downloads/photo.jpg
-        ↓
-~/Pictures/[AUTOMATED]-moved-files/jpg/photo.jpg
-```
+The current configuration contains **315 keywords**:
 
-A music file:
+| Category | Keywords | Main vocabulary groups |
+| --- | ---: | --- |
+| School | 94 | Academic documents, university administration, research, and computer science |
+| Work | 111 | Employment, business, freelancing, OJT, and professional software |
+| Personal | 110 | Identity, finance, shopping, health, personal life, and media |
 
-```text
-~/Downloads/song.mp3
-        ↓
-~/Music/[AUTOMATED]-moved-files/mp3/song.mp3
-```
-
-A video:
-
-```text
-~/Downloads/video.mp4
-        ↓
-~/Videos/[AUTOMATED]-moved-files/mp4/video.mp4
-```
+Weights range from `1` for generic supporting words to `5` for highly
+discriminative signals such as `professor`, `payslip`, `job offer`, `PhilSys`,
+and `birth certificate`. Extensions contribute only `+1`, so `.pdf`, `.docx`,
+and other shared formats cannot decide a category by themselves.
 
 ### Destination Structure
 
-The resulting directory structure looks like:
+The resulting directory structure organizes by Category, then by format:
 
 ```text
 ~/Documents/
-└── [AUTOMATED]-moved-files/
-    ├── pdf/
-    ├── docx/
-    ├── csv/
-    ├── xlsx/
-    ├── txt/
-    └── pptx/
-
-~/Pictures/
-└── [AUTOMATED]-moved-files/
-    ├── png/
-    ├── jpg/
-    └── jpeg/
-
-~/Music/
-└── [AUTOMATED]-moved-files/
-    └── mp3/
-
-~/Videos/
-└── [AUTOMATED]-moved-files/
-    └── mp4/
+├── School/
+│   └── [AUTOMATED]-moved-files/
+│       ├── pdf/
+│       └── docx/
+├── Work/
+│   └── [AUTOMATED]-moved-files/
+│       ├── csv/
+│       └── xlsx/
+├── Personal/
+│   └── [AUTOMATED]-moved-files/
+│       └── jpg/
+└── Uncategorized/
+    └── [AUTOMATED]-moved-files/
+        └── png/
 ```
-
-## Duplicate Files
-
-The organizer does not overwrite an existing file.
-
-If the destination already contains:
-
-```text
-report.txt
-```
-
-the next file will become:
-
-```text
-report_1.txt
-```
-
-and subsequent duplicates become:
-
-```text
-report_2.txt
-report_3.txt
-...
-```
-
-This prevents existing files from being overwritten during automated organization.
 
 ## How It Works
 
-The application follows an event-driven workflow:
+The application follows a decoupled, event-driven data pipeline:
 
 ```text
                  ~/Downloads
                       │
-                      ▼
               Watchdog Observer
-                      │
-                      ▼
-              DownloadHandler
                       │
               filesystem event
                       ▼
                  Event Queue
                       │
-                      ▼
                Worker Thread
                       │
-                      ▼
-              Stability Check
+              Content Extractor (Limits memory, triggers Lazy OCR)
                       │
-                      ▼
-              File Classification
+             Heuristic Classifier (Scores keywords & metadata)
                       │
              ┌────────┼────────┐
              ▼        ▼        ▼
-         Documents Pictures Music/Videos
-             │        │        │
-             └────────┼────────┘
-                      ▼
-                 Move File
+           School    Work   Personal  (or Uncategorized)
+                      │
+                  Move File
                       │
                       ▼
                     Log
@@ -206,14 +135,14 @@ A filesystem event can occur while a file is still being written.
 
 For example, a large download might appear in Downloads before its contents are completely written.
 
-The organizer therefore waits until the file size remains unchanged for several consecutive checks before processing it.
+The organizer therefore waits until both the file size and modification time remain unchanged for several consecutive checks before processing it. A file that never stabilizes is abandoned after 60 seconds so it cannot block the worker forever.
 
 The current implementation uses:
 
 * 3 stable checks
 * 1 second between checks
 
-This means the default stability requirement is based on the file size remaining unchanged across consecutive observations.
+This means the default stability requirement is based on the size and modification time remaining unchanged across consecutive observations. If another event arrives for a path that is already queued, SortFlow marks it dirty and checks it again after the current attempt finishes.
 
 ## Project Structure
 
@@ -221,252 +150,104 @@ This means the default stability requirement is based on the file size remaining
 sortflow/
 ├── pyproject.toml
 ├── README.md
-├── TEST_RESULTS.md
 ├── src/
 │   └── sortflow/
 │       ├── __init__.py
-│       ├── classifier.py
-│       ├── config.py
-│       ├── logger.py
-│       ├── main.py
-│       ├── organizer.py
-│       └── watcher.py
+│       ├── classifier.py     # Weighted keyword scoring engine
+│       ├── config.py         # Declarative categories and weights
+│       ├── extractor.py      # Safe text reading and Lazy OCR
+│       ├── logger.py         # Rotating application logs
+│       ├── main.py           # Application entry point
+│       ├── organizer.py      # Collision resolution and file movement
+│       ├── watcher.py        # Thread-safe Watchdog event queue
+│       └── database/
+│           ├── connection.py # SQLite context manager
+│           ├── initialize.py # Table schema definitions
+│           └── repository.py # Telemetry insert queries
 └── tests/
     ├── test_classifier.py
+    ├── test_database.py
+    ├── test_extractor.py
     ├── test_organizer.py
     └── test_watcher.py
 ```
 
-### Module Responsibilities
+## Logging & Telemetry
 
-| Module          | Responsibility                                                 |
-| --------------- | -------------------------------------------------------------- |
-| `classifier.py` | Determines the category and extension of supported files       |
-| `config.py`     | Defines Downloads and destination directories                  |
-| `organizer.py`  | Creates destinations, handles duplicate names, and moves files |
-| `watcher.py`    | Monitors Downloads and manages file-processing events          |
-| `logger.py`     | Configures rotating application logs                           |
-| `main.py`       | Application entry point                                        |
+**Application Logs:** Stored at `~/.local/state/sortflow/logs/sortflow.log` using a `RotatingFileHandler` (max 5MB, 3 backups).
 
-## Logging
+**SQLite Telemetry:** Stored at `~/.local/share/sortflow/database.db`. You can query this database to tune your configuration:
 
-Application logs are stored outside Downloads at:
-
-```text
-~/.local/state/sortflow/logs/sortflow.log
+```sql
+SELECT filename, predicted_category, confidence_score, matched_signals 
+FROM classification_feedback 
+WHERE predicted_category = 'uncategorized';
 ```
-
-The application uses `RotatingFileHandler` with:
-
-* Maximum log size: 5 MiB
-* Backup files: 3
-* UTF-8 encoding
-
-Keeping logs outside Downloads prevents the organizer from accidentally reacting to its own log files.
 
 ## Requirements
 
 * Linux
 * Python 3.12+
-* Watchdog 6.0.0
-* uv
-* systemd with user-service support
-
-The current development environment used for testing was:
-
-```text
-OS:       Linux Mint 22.3 Zena Xfce
-Python:   3.12.3
-uv:       0.12.7
-Watchdog: 6.0.0
-pytest:   9.1.1
-CPU:      Intel Core i5-1035G1
-RAM:      8 GB
-```
+* `tesseract-ocr` (System-level dependency for Lazy OCR)
+* Watchdog 6.0.0, PyMuPDF, python-docx, python-pptx
+* uv (Python package manager)
+* systemd (for user-service background execution)
 
 ## Installation
 
-Clone the repository and enter the project directory:
+1. Install system dependencies for OCR:
+```bash
+sudo apt update && sudo apt install tesseract-ocr
+```
 
+
+2. Clone the repository:
 ```bash
 git clone <repository-url>
 cd sortflow
 ```
 
-Install the project dependencies with uv:
 
+3. Install project dependencies with `uv`:
 ```bash
 uv sync
 ```
 
-## Running Manually
 
-The application can be started with:
-
-```bash
-uv run python -m sortflow.main
-```
-
-The program then continues running and monitors `~/Downloads`.
-
-Stop it with:
-
-```text
-Ctrl+C
-```
 
 ## Running as a systemd User Service
 
-The organizer can run headlessly in the background using a `systemd --user` service.
-
-The service is configured to launch:
-
-```bash
-uv run python -m sortflow.main
-```
-
-After installing the service:
+After defining your service file to launch `uv run sortflow`:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user start sortflow.service
+systemctl --user enable --now sortflow.service
 ```
 
-Check its status with:
+Check its status or view live logs:
 
 ```bash
 systemctl --user status sortflow.service
-```
-
-Enable automatic startup:
-
-```bash
-systemctl --user enable sortflow.service
-```
-
-Once enabled, the organizer starts automatically with the user's Linux session without requiring an open terminal.
-
-### Service Management
-
-Restart after changing the application:
-
-```bash
-systemctl --user restart sortflow.service
-```
-
-Stop the service:
-
-```bash
-systemctl --user stop sortflow.service
-```
-
-View systemd logs:
-
-```bash
-journalctl --user -u sortflow.service
-```
-
-Follow the service log live:
-
-```bash
 journalctl --user -u sortflow.service -f
-```
-
-Application-specific logs remain in:
-
-```text
-~/.local/state/sortflow/logs/sortflow.log
 ```
 
 ## Testing
 
-The project uses `pytest` for automated testing.
-
-Run the test suite with:
+The project uses `pytest` with string-based `monkeypatching` to isolate the filesystem and bypass heavy OCR libraries during test execution.
 
 ```bash
 uv run pytest
 ```
 
-Current test result:
-
-```text
-15 passed in 0.13s
-```
-
-The test suite covers file classification, duplicate destination handling, actual file movement, Downloads path validation, file stability, and missing-file behavior.
-
 Additional manual QA and system integration testing are documented in [`TEST_RESULTS.md`](TEST_RESULTS.md).
-
-## Project Status
-
-**V1.0 — Functional**
-
-The current implementation is running as a `systemd --user` background service and has passed the current automated tests, manual QA tests, and systemd integration testing.
-
-## Known Limitations
-
-### Stability is based on file size
-
-The current stability check determines that a file is stable when its size remains unchanged for the configured number of checks.
-
-This does not guarantee that every possible application has completely finished writing to the file.
-
-### File classification is extension-based
-
-Classification currently relies on the file extension.
-
-For example:
-
-```text
-report.pdf → Documents
-photo.jpg  → Pictures
-```
-
-The application does not inspect file contents to determine their type.
-
-### Categories are currently predefined
-
-The destination categories and extensions are currently defined in the source code rather than being user-configurable.
-
-### No content-based organization
-
-The V1 organizer does not determine whether a document is a school file, personal file, work file, etc.
-
-A future version could potentially introduce smarter classification rules or metadata/content-based organization.
-
-## Future Improvements
-
-Possible future improvements include:
-
-* Add more supported file extensions
-* Make categories configurable
-* Make the Downloads directory configurable
-* Improve file stability detection
-* Improve graceful shutdown handling
-* Expand automated integration testing
-* Improve sorting performance where applicable
-* Add smarter organization rules
-* Support organizing files into higher-level groups such as school, personal, or other user-defined categories
-* Improve configuration management
 
 ## Why I Built This
 
-I built this project to solve a small problem I personally encountered: keeping my Downloads directory organized.
+I am Chyrus Miguel D. Macalla, a Computer Science student at Pampanga State University (Bacolor Campus). I built this project to solve my own cluttered `~/Downloads` directory, but engineered it explicitly for the hardware constraints of my Dell Inspiron 3593 (Intel Core i5-1035G1, 8GB RAM) running Linux Mint 22.3 XFCE. 
 
-At the same time, I used it as an opportunity to practice practical Python automation and software engineering concepts, including:
+Because SortFlow runs continuously as a background daemon, I chose a deterministic, rule-based approach and deferred heavy module imports until absolutely necessary. This prevents unnecessary thermal throttling and leaves memory free for my active development workflows.
 
-* Filesystem event monitoring
-* Object-oriented event handlers
-* Thread-safe queues
-* Background worker threads
-* File operations with `pathlib`
-* Logging
-* Error handling
-* Automated testing with pytest
-* Linux service management with systemd
-
-The project is part of my broader goal of developing practical Python automation skills, particularly for future work involving data processing and ETL.
+You can view my full engineering portfolio at: [https://migelitz.github.io/](https://migelitz.github.io/)
 
 ## License
 
